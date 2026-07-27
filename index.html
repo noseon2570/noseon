@@ -141,8 +141,8 @@
 
                 <!-- Camera Switcher -->
                 <div class="glass-panel p-1.5 rounded-2xl flex gap-1 pointer-events-auto">
-                    <button onclick="setCameraMode('orbit')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all active bg-amber-500/20 text-amber-300 border border-amber-500/30" data-cam="orbit">
-                        <i class="fa-solid fa-video mr-1"></i> 전체뷰
+                    <button onclick="setCameraMode('sky')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all active bg-amber-500/20 text-amber-300 border border-amber-500/30" data-cam="sky">
+                        <i class="fa-solid fa-plane mr-1"></i> 공중뷰
                     </button>
                     <button onclick="setCameraMode('leader')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="leader">
                         <i class="fa-solid fa-bolt mr-1"></i> 선두 추적
@@ -344,15 +344,17 @@
         let selectedHorseId = null;
         let currentBetAmount = 50000;
         let raceState = 'BETTING'; // 'BETTING', 'RACING', 'FINISHED'
+        let raceCount = 0; // Total races counter
+        let nextReverseRaceTarget = Math.floor(Math.random() * 3) + 3; // Trigger reverse every 3-5 races
         
         // 3D Scene Setup Variables
         let scene, camera, renderer;
         let horses = [];
         let horseModels = [];
-        let trackWidth = 22; // Expanded track width for better visibility
+        let trackWidth = 22; 
         let raceDistance = 1000; // Target distance (m)
         let raceStartTime = 0;
-        let cameraMode = 'orbit'; // 'orbit', 'leader', 'myhorse', 'finish'
+        let cameraMode = 'sky'; // Default to sky mode
         let soundEnabled = true;
 
         // Horse Names & High Contrast Colors
@@ -438,12 +440,13 @@
             const shuffledNames = [...HORSE_NAMES].sort(() => 0.5 - Math.random()).slice(0, 6);
 
             for (let i = 0; i < 6; i++) {
-                const speed = Math.floor(Math.random() * 25) + 70;
-                const stamina = Math.floor(Math.random() * 25) + 70;
-                const burst = Math.floor(Math.random() * 25) + 70;
+                const speed = Math.floor(Math.random() * 30) + 70;
+                const stamina = Math.floor(Math.random() * 30) + 70;
+                const burst = Math.floor(Math.random() * 30) + 70;
 
-                const totalRating = speed * 0.5 + stamina * 0.3 + burst * 0.2;
-                const baseOdds = (100 - totalRating) / 6.5 + 1.2;
+                // Pure stat-based rating & unbiased odds calculation
+                const totalRating = speed * 0.45 + stamina * 0.35 + burst * 0.2;
+                const baseOdds = (100 - totalRating) / 5.5 + 1.2;
                 const odds = parseFloat(Math.max(1.3, baseOdds).toFixed(1));
 
                 horses.push({
@@ -460,8 +463,13 @@
                     finished: false,
                     finishTime: 0,
                     currentSpeed: 0,
-                    phaseOffset: Math.random() * Math.PI * 2, // Unique speed fluctuation phase
-                    stumble: false, // Fall/Trip event state
+                    phaseOffset: Math.random() * Math.PI * 2,
+                    stumble: false,
+                    willFall: false,
+                    fallTriggerDistance: 0,
+                    isReversing: false,
+                    willReverse: false,
+                    reverseTriggerDistance: 0,
                     legAngle: Math.random() * Math.PI
                 });
             }
@@ -547,8 +555,10 @@
 
             createFence(L, outerR);
             createFence(L, innerR);
-            createFinishLineArch(0, R);
-            createStartingGate(-35, R);
+            // 1000m 완주 시 정확히 도착하는 물리적 x좌표(29.5)에 결승선 배치
+            createFinishLineArch(29.5, R);
+            // 거리 0m인 정확한 시작점(-L/2)에 출발 게이트 배치
+            createStartingGate(-45, R);
         }
 
         function createStartingGate(x, z) {
@@ -768,44 +778,53 @@
             });
         }
 
-        function getTrackPosition(distanceMeters, laneIndex) {
-            const L = 90;
-            const laneOffset = (laneIndex - 2.5) * 3.2; // Spacing across wide track
-            const R = 45 + laneOffset;
-            const totalCircuitLen = 2 * L + 2 * Math.PI * R;
+        function getTrackPosition(distanceMeters, laneIndex, isReversing = false) {
+            const L = 90; // 직선 구간 길이
+            const R_base = 45; // 트랙 기준 반지름
+            const laneOffset = (laneIndex - 2.5) * 3.2; // 레인별 간격
+            const R_lane = R_base + laneOffset; // 현재 말의 실제 회전 반지름
 
-            // Map race distance (1000m) smoothly to track loops
-            const normalizedDist = (distanceMeters / raceDistance) * (totalCircuitLen * 2.0); 
-            const distInLoop = normalizedDist % totalCircuitLen;
+            // 순간이동 방지: 모든 말이 동일한 '기준 트랙 길이'를 바탕으로 위치를 계산하여 싱크를 맞춤
+            const masterSemiCircleLen = Math.PI * R_base;
+            const masterCircuitLen = 2 * L + 2 * masterSemiCircleLen;
+            
+            // 한 바퀴를 초과한 거리를 정규화 (s는 0 ~ masterCircuitLen 사이의 값)
+            let s = distanceMeters % masterCircuitLen;
+            if (s < 0) s += masterCircuitLen;
 
-            let x, z, angle;
-            const semiCircleLen = Math.PI * R;
+            let x = 0, z = 0, angle = 0;
 
-            if (distInLoop < L) {
-                // Bottom Straight (Moving Right)
-                x = distInLoop - L/2;
-                z = R;
-                angle = Math.PI / 2;
-            } else if (distInLoop < L + semiCircleLen) {
-                // Right Curve
-                const progress = (distInLoop - L) / semiCircleLen;
-                const theta = -Math.PI / 2 + progress * Math.PI;
-                x = L/2 + Math.cos(theta) * R;
-                z = Math.sin(theta) * R;
-                angle = Math.PI / 2 - progress * Math.PI;
-            } else if (distInLoop < 2 * L + semiCircleLen) {
-                // Top Straight (Moving Left)
-                const distOnStraight = distInLoop - (L + semiCircleLen);
-                x = L/2 - distOnStraight;
-                z = -R;
-                angle = -Math.PI / 2;
+            // 반시계 방향(Counter-Clockwise) 연속 주행 수학 모델
+            if (s < L) {
+                // 1. 하단 직선 트랙 (우측으로 이동, +X)
+                x = -L / 2 + s;
+                z = R_lane;
+                angle = Math.PI / 2; // 우측(+X) 바라봄
+            } else if (s < L + masterSemiCircleLen) {
+                // 2. 우측 곡선 코너 (위로 회전)
+                const progress = (s - L) / masterSemiCircleLen;
+                const theta = Math.PI / 2 - progress * Math.PI; 
+                x = L / 2 + Math.cos(theta) * R_lane;
+                z = Math.sin(theta) * R_lane;
+                angle = Math.PI / 2 + progress * Math.PI; // 우에서 좌로 부드럽게 회전
+            } else if (s < 2 * L + masterSemiCircleLen) {
+                // 3. 상단 직선 트랙 (좌측으로 이동, -X)
+                const progress = s - (L + masterSemiCircleLen);
+                x = L / 2 - progress;
+                z = -R_lane;
+                angle = 3 * Math.PI / 2; // 좌측(-X) 바라봄
             } else {
-                // Left Curve
-                const progress = (distInLoop - (2 * L + semiCircleLen)) / semiCircleLen;
-                const theta = Math.PI / 2 + progress * Math.PI;
-                x = -L/2 + Math.cos(theta) * R;
-                z = Math.sin(theta) * R;
-                angle = -Math.PI / 2 - progress * Math.PI;
+                // 4. 좌측 곡선 코너 (아래로 회전)
+                const progress = (s - (2 * L + masterSemiCircleLen)) / masterSemiCircleLen;
+                const theta = -Math.PI / 2 - progress * Math.PI;
+                x = -L / 2 + Math.cos(theta) * R_lane;
+                z = Math.sin(theta) * R_lane;
+                angle = 3 * Math.PI / 2 + progress * Math.PI; // 좌에서 우로 부드럽게 회전 (3*PI/2 -> 5*PI/2)
+            }
+
+            // 역주행 이벤트 발생 시 180도 뒤로 돌기
+            if (isReversing) {
+                angle += Math.PI;
             }
 
             return { x, z, angle };
@@ -930,7 +949,30 @@
 
             playerBalance -= currentBetAmount;
             totalBets += currentBetAmount;
+            raceCount++;
             updateBalanceUI();
+
+            // Schedule Fallers (Strictly 0 to 2 per race)
+            const numFallers = Math.floor(Math.random() * 3); // 0, 1, or 2
+            const availableHorses = [...horses].sort(() => 0.5 - Math.random());
+            
+            for (let i = 0; i < numFallers; i++) {
+                const faller = availableHorses[i];
+                faller.willFall = true;
+                faller.fallTriggerDistance = 320 + Math.random() * 450; // Falls midway (320m ~ 770m)
+            }
+
+            // Schedule Reverse Horse (Every 3-5 races)
+            if (raceCount >= nextReverseRaceTarget) {
+                // Pick a horse that is not scheduled to fall
+                const reverseCandidates = horses.filter(h => !h.willFall);
+                if (reverseCandidates.length > 0) {
+                    const chosen = reverseCandidates[Math.floor(Math.random() * reverseCandidates.length)];
+                    chosen.willReverse = true;
+                    chosen.reverseTriggerDistance = 350 + Math.random() * 300; // Trigger between 350m ~ 650m
+                }
+                nextReverseRaceTarget = raceCount + Math.floor(Math.random() * 3) + 3; // Reset next target
+            }
 
             raceState = 'RACING';
             raceStartTime = performance.now();
@@ -950,7 +992,7 @@
             document.getElementById('myBetAmountDisplay').innerText = `₩${currentBetAmount.toLocaleString()}`;
             document.getElementById('myBetPossiblePayout').innerText = `₩${Math.floor(currentBetAmount * myHorse.odds).toLocaleString()}`;
 
-            updateCommentary("탕! 가문의 명예를 건 더비 레이스가 시작되었습니다!");
+            updateCommentary("탕! 가문의 명예를 건 초고속 더비 레이스가 시작되었습니다!");
         }
 
         function updateRacePhysics(delta) {
@@ -958,108 +1000,117 @@
 
             let allFinished = true;
             const elapsedTime = (performance.now() - raceStartTime) / 1000;
-
-            // Sort horses to calculate dynamic slipstream/drafting speed boosts
             const currentStandings = [...horses].sort((a, b) => b.distance - a.distance);
 
             horses.forEach((horse, idx) => {
                 if (horse.finished) return;
 
-                // Random fall/stumble accident mechanic (~4% total chance per race around mid-race)
-                if (!horse.stumble && elapsedTime > 3 && horse.distance < 820 && Math.random() < 0.0004) {
+                const model = horseModels[idx];
+
+                // Check planned Fall/Stumble Event (Controlled 0~2 per race)
+                if (horse.willFall && !horse.stumble && horse.distance >= horse.fallTriggerDistance) {
                     horse.stumble = true;
                     playStumbleSound();
-                    updateCommentary(`⚠️ 아! ${horse.id}번 [${horse.name}] 말이 발이 걸려 넘어졌습니다 (낙마 발생)!`);
+                    updateCommentary(`⚠️ 아! ${horse.id}번 [${horse.name}] 힘에 겨워 넘어졌습니다 (낙마 발생)!`);
                 }
-
-                const model = horseModels[idx];
 
                 // Stumbled/Fallen horse handling
                 if (horse.stumble) {
                     horse.currentSpeed = 0;
-                    // Dramatic sideways fall rotation on track
-                    model.group.rotation.z = Math.min(Math.PI / 2, model.group.rotation.z + delta * 4);
-                    model.group.position.y = 0.4;
+                    model.group.rotation.z = Math.min(Math.PI / 2, model.group.rotation.z + delta * 5);
+                    model.group.position.y = 0.3;
                     return;
+                }
+
+                // Check Reverse Running Trigger (Easter Egg every 3-5 races)
+                if (horse.willReverse && !horse.isReversing && horse.distance >= horse.reverseTriggerDistance) {
+                    horse.isReversing = true;
+                    playStumbleSound();
+                    showToast(`🚨 돌발상황! ${horse.id}번 [${horse.name}] 말이 방향을 잃고 역주행합니다!`);
+                    updateCommentary(`🚨 관중석 발칵! ${horse.id}번 [${horse.name}] 말이 기수를 무시하고 반대 방향으로 역주행하기 시작합니다!`);
                 }
 
                 allFinished = false;
 
                 const progressRatio = horse.distance / raceDistance;
 
-                // Base speed scaling (~22 - 28 m/s)
-                let baseSpeed = (horse.speed / 80) * 23.5;
+                // High-Speed Base Physics (~46 - 54 m/s for fast-paced ~20s races)
+                let baseSpeed = (horse.speed / 80) * 48.0;
 
-                // Multi-frequency wave creates frequent dramatic overtaking opportunities
-                const wave1 = Math.sin(elapsedTime * 1.4 + horse.phaseOffset) * 4.2;
-                const wave2 = Math.sin(elapsedTime * 2.8 + horse.id * 1.5) * 2.0;
+                // Multi-frequency wave creates lively dynamic overtaking
+                const wave1 = Math.sin(elapsedTime * 2.5 + horse.phaseOffset) * 6.5;
+                const wave2 = Math.sin(elapsedTime * 4.2 + horse.id * 1.8) * 3.5;
                 let targetSpeed = baseSpeed + wave1 + wave2;
 
-                // Slipstream Drafting Mechanic: Behind a leader gives boost to pull out and overtake!
+                // Slipstream Drafting Acceleration Boost
                 const myRank = currentStandings.findIndex(h => h.id === horse.id);
-                if (myRank > 0) {
+                if (myRank > 0 && !horse.isReversing) {
                     const horseAhead = currentStandings[myRank - 1];
                     const distGap = horseAhead.distance - horse.distance;
-                    if (distGap > 0 && distGap < 12) {
-                        targetSpeed += 2.8; // Slipstream acceleration boost
+                    if (distGap > 0 && distGap < 15) {
+                        targetSpeed += 5.5; 
                     }
                 }
 
-                // Stamina depletion factor
+                // Stamina depletion & burst sprint
                 if (progressRatio > 0.5) {
-                    const staminaFactor = horse.stamina / 100;
-                    targetSpeed *= (0.83 + staminaFactor * 0.27);
+                    targetSpeed *= (0.85 + (horse.stamina / 100) * 0.25);
+                }
+                if (progressRatio > 0.7) {
+                    targetSpeed += (horse.burst / 100) * 10.0;
                 }
 
-                // Final stretch sprint burst (last 280m)
-                if (progressRatio > 0.72) {
-                    const burstFactor = (horse.burst / 100) * 6.8;
-                    targetSpeed += burstFactor;
+                // Reverse Running Speed Mechanics
+                if (horse.isReversing) {
+                    targetSpeed = 35.0; // Steady backward speed
                 }
 
-                // Smooth speed interpolation
-                horse.currentSpeed += (targetSpeed - horse.currentSpeed) * 0.1;
+                // Smooth speed transition
+                horse.currentSpeed += (targetSpeed - horse.currentSpeed) * 0.15;
 
-                // Distance update
-                horse.distance += horse.currentSpeed * delta;
+                // Distance update (reverse decreases distance)
+                if (horse.isReversing) {
+                    horse.distance = Math.max(0, horse.distance - horse.currentSpeed * delta);
+                } else {
+                    horse.distance += horse.currentSpeed * delta;
+                }
 
                 // Finish line check
-                if (horse.distance >= raceDistance) {
+                if (!horse.isReversing && horse.distance >= raceDistance) {
                     horse.distance = raceDistance;
                     horse.finished = true;
                     horse.finishTime = elapsedTime;
                 }
 
-                // 3D Model Position & Animation
-                const pos = getTrackPosition(horse.distance, horse.lane);
+                // Smooth, continuous track coordinate rendering
+                const pos = getTrackPosition(horse.distance, horse.lane, horse.isReversing);
 
                 model.group.position.set(pos.x, 0, pos.z);
                 model.group.rotation.y = pos.angle;
 
-                // Galloping animation
-                horse.legAngle += horse.currentSpeed * delta * 0.95;
-                const swing = Math.sin(horse.legAngle) * 0.85;
+                // Fast galloping animation
+                horse.legAngle += horse.currentSpeed * delta * 1.4;
+                const swing = Math.sin(horse.legAngle) * 0.95;
 
                 model.legs[0].rotation.x = swing;
                 model.legs[1].rotation.x = -swing;
                 model.legs[2].rotation.x = -swing;
                 model.legs[3].rotation.x = swing;
 
-                model.headGroup.rotation.z = Math.sin(horse.legAngle * 2) * 0.12;
-                model.group.position.y = Math.abs(Math.sin(horse.legAngle * 2)) * 0.5;
+                model.headGroup.rotation.z = Math.sin(horse.legAngle * 2) * 0.15;
+                model.group.position.y = Math.abs(Math.sin(horse.legAngle * 2)) * 0.6;
             });
 
             // Update leaderboard & camera
             const standings = [...horses].sort((a, b) => b.distance - a.distance);
             updateRaceHUD(standings);
 
-            // Dynamic live audio commentary updates on lead changes
-            if (Math.random() < 0.018) {
+            if (Math.random() < 0.025) {
                 const leader = standings[0];
                 if (leader.distance > 800) {
-                    updateCommentary(`결승선 직전! ${leader.id}번 [${leader.name}] 치열한 주행 속에 선두 수비 중!`);
+                    updateCommentary(`결승선 200m 전! ${leader.id}번 [${leader.name}] 엄청난 스퍼트로 선두 질주 중!`);
                 } else if (leader.distance > 450) {
-                    updateCommentary(`코너 통과! ${leader.id}번 [${leader.name}] 거센 추격을 따돌리고 선두로 치고 나옵니다!`);
+                    updateCommentary(`중반부 코너 탈출! ${leader.id}번 [${leader.name}] 치열한 선두 다툼 속 우위 점령!`);
                 }
             }
 
@@ -1078,7 +1129,6 @@
             const leaderDist = standings[0].distance;
             document.getElementById('raceDistanceProgress').innerText = `${Math.min(1000, Math.floor(leaderDist))}m / 1000m`;
 
-            // Reposition persistent horse elements smoothly with CSS translateY
             standings.forEach((horse, rank) => {
                 const card = document.getElementById(`rank-card-horse-${horse.id}`);
                 if (card) {
@@ -1098,6 +1148,8 @@
                     if (rankName) {
                         if (horse.stumble) {
                             rankName.innerHTML = `${horse.id}번 ${horse.name} <span class="text-rose-400 font-bold text-[10px]">(낙마)</span>`;
+                        } else if (horse.isReversing) {
+                            rankName.innerHTML = `${horse.id}번 ${horse.name} <span class="text-amber-400 font-bold text-[10px]">(역주행)</span>`;
                         } else {
                             rankName.innerText = `${horse.id}번 ${horse.name}`;
                         }
@@ -1105,22 +1157,29 @@
 
                     const rankDist = document.getElementById(`rank-dist-${horse.id}`);
                     if (rankDist) {
-                        rankDist.innerText = horse.stumble ? '낙마' : `${Math.floor(horse.distance)}m`;
+                        if (horse.stumble) rankDist.innerText = '낙마';
+                        else if (horse.isReversing) rankDist.innerText = '역주행';
+                        else rankDist.innerText = `${Math.floor(horse.distance)}m`;
                     }
                 }
 
-                // Sidebar Detail List
+                // Sidebar Detail Card
                 const detailCard = document.createElement('div');
                 const isMyBet = horse.id === selectedHorseId;
                 detailCard.className = `glass-card p-2.5 rounded-xl border text-xs flex justify-between items-center ${isMyBet ? 'border-amber-500/50 bg-amber-500/10' : 'border-slate-800'}`;
                 const speedKmh = horse.stumble ? '0.0' : (horse.currentSpeed * 3.6).toFixed(1);
+                
+                let statusTag = '';
+                if (horse.stumble) statusTag = '<span class="text-rose-400 text-[10px] font-bold">(낙마)</span>';
+                else if (horse.isReversing) statusTag = '<span class="text-amber-400 text-[10px] font-bold">(역주행)</span>';
+
                 detailCard.innerHTML = `
                     <div class="flex items-center gap-2">
                         <div class="w-6 h-6 rounded-lg text-slate-950 font-black flex items-center justify-center text-[10px] shadow" style="background-color: ${horse.jockeyColor}">
                             ${horse.id}
                         </div>
                         <div>
-                            <div class="font-bold text-slate-200">${horse.name} ${horse.stumble ? '<span class="text-rose-400 text-[10px] font-bold">(낙마)</span>' : ''}</div>
+                            <div class="font-bold text-slate-200">${horse.name} ${statusTag}</div>
                             <div class="text-[10px] text-slate-400">속도: ${speedKmh} km/h</div>
                         </div>
                     </div>
@@ -1164,14 +1223,10 @@
             const myHorse = horses.find(h => h.id === selectedHorseId);
             const myHorseModel = myHorse ? horseModels[myHorse.id - 1] : leaderModel;
 
-            if (cameraMode === 'orbit') {
-                const avgX = sorted.reduce((acc, h) => acc + horseModels[h.id-1].group.position.x, 0) / 6;
-                const avgZ = sorted.reduce((acc, h) => acc + horseModels[h.id-1].group.position.z, 0) / 6;
-
-                camera.position.x += (avgX - camera.position.x) * 0.06;
-                camera.position.z += (avgZ + 75 - camera.position.z) * 0.06;
-                camera.position.y += (60 - camera.position.y) * 0.06;
-                camera.lookAt(avgX, 2, avgZ);
+            if (cameraMode === 'sky') {
+                // 어지러운 움직임 없이 공중에서 뷰를 완벽하게 고정
+                camera.position.set(0, 160, 40);
+                camera.lookAt(0, 0, 0);
             } else if (cameraMode === 'leader') {
                 const pos = leaderModel.group.position;
                 const angle = leaderModel.group.rotation.y;
