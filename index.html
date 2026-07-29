@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-LS3PL4B01M"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-LS3PL4B01M');
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D 리얼 경마 시뮬레이션 - 로얄 더비</title>
@@ -982,12 +991,21 @@
             updateCommentary("탕! 가문의 명예를 건 초고속 더비 레이스가 시작되었습니다!");
         }
 
+        function compareHorses(a, b) {
+            if (a.finished && b.finished) {
+                return a.finishTime - b.finishTime;
+            }
+            if (a.finished) return -1;
+            if (b.finished) return 1;
+            return b.distance - a.distance;
+        }
+
         function updateRacePhysics(delta) {
             if (raceState !== 'RACING') return;
 
             let allFinished = true;
             const elapsedTime = (performance.now() - raceStartTime) / 1000;
-            const currentStandings = [...horses].sort((a, b) => b.distance - a.distance);
+            const currentStandings = [...horses].sort(compareHorses);
 
             horses.forEach((horse, idx) => {
                 if (horse.finished) return;
@@ -1082,7 +1100,7 @@ horse.distance += horse.currentSpeed * delta;
             });
 
             // Update leaderboard & camera
-            const standings = [...horses].sort((a, b) => b.distance - a.distance);
+            const standings = [...horses].sort(compareHorses);
             updateRaceHUD(standings);
 
             if (Math.random() < 0.025) {
@@ -1196,7 +1214,7 @@ horse.distance += horse.currentSpeed * delta;
                 return;
             }
 
-            const sorted = [...horses].sort((a, b) => b.distance - a.distance);
+            const sorted = [...horses].sort(compareHorses);
             const leader = sorted[0];
             const leaderModel = horseModels[leader.id - 1];
             
@@ -1236,7 +1254,8 @@ horse.distance += horse.currentSpeed * delta;
         }
 
         function handleRaceFinish(finalStandings) {
-            const winner = finalStandings[0];
+            const sortedFinals = [...finalStandings].sort(compareHorses);
+            const winner = sortedFinals[0];
             const isWin = winner.id === selectedHorseId;
 
             let payout = 0;
@@ -1256,13 +1275,13 @@ horse.distance += horse.currentSpeed * delta;
             const card = document.getElementById('resultModalCard');
 
             document.getElementById('podium1Name').innerText = `${winner.id}번 ${winner.name}`;
-            document.getElementById('podium1Time').innerText = `${winner.finishTime.toFixed(2)}초`;
+            document.getElementById('podium1Time').innerText = winner.finished ? `${winner.finishTime.toFixed(2)}초` : '--';
 
-            document.getElementById('podium2Name').innerText = `${finalStandings[1].id}번 ${finalStandings[1].name}`;
-            document.getElementById('podium2Time').innerText = `${finalStandings[1].finishTime.toFixed(2)}초`;
+            document.getElementById('podium2Name').innerText = `${sortedFinals[1].id}번 ${sortedFinals[1].name}`;
+            document.getElementById('podium2Time').innerText = sortedFinals[1].finished ? `${sortedFinals[1].finishTime.toFixed(2)}초` : '--';
 
-            document.getElementById('podium3Name').innerText = `${finalStandings[2].id}번 ${finalStandings[2].name}`;
-            document.getElementById('podium3Time').innerText = `${finalStandings[2].finishTime.toFixed(2)}초`;
+            document.getElementById('podium3Name').innerText = `${sortedFinals[2].id}번 ${sortedFinals[2].name}`;
+            document.getElementById('podium3Time').innerText = sortedFinals[2].finished ? `${sortedFinals[2].finishTime.toFixed(2)}초` : '--';
 
             document.getElementById('resultBetAmount').innerText = `₩${currentBetAmount.toLocaleString()}`;
             document.getElementById('resultOdds').innerText = `${winner.odds.toFixed(1)}x`;
@@ -1353,5 +1372,45 @@ horse.distance += horse.currentSpeed * delta;
             animate();
         };
     </script>
+<!-- ... 이전 코드 생략 ... -->
+
+                    <!-- Start Race Button -->
+                    <button id="startRaceBtn" onclick="startRace()" class="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 rounded-xl shadow-lg shadow-amber-500/20 text-base tracking-wider uppercase transition-all duration-200 transform active:scale-98 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play text-slate-950"></i> 레이스 시작하기
+                    </button>
+                </div>
+
+                <!-- 광고 삽입 공간: 사이드바 배팅 컨트롤 하단 -->
+                <div class="mt-4 p-2 bg-slate-950/50 rounded-xl border border-slate-800 text-center">
+                    <p class="text-[10px] text-slate-600 mb-2">Advertisement</p>
+                    <div class="h-48 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-lg">
+                        <!-- 여기에 애드센스 광고 코드를 넣으세요 -->
+                        <span class="text-slate-700 text-xs">광고 영역</span>
+                    </div>
+                </div>
+
+                <!-- 관련 링크 메뉴 -->
+                <div class="mt-4 flex justify-center gap-4 text-[10px] text-slate-500">
+                    <a href="https://adsense-ko.googleblog.com/2012/04/blog-post_25.html" target="_blank" class="hover:text-amber-400">애드센스 도움말[cite: 1]</a>
+                    <a href="https://adsense-ko.googleblog.com/2012/09/2.html" target="_blank" class="hover:text-amber-400">수익 증대 팁</a>
+                </div>
+            </div>
+
+            <!-- Phase 2: Live Race Sidebar Info -->
+            <div id="racingPhaseUI" class="p-4 space-y-4 hidden flex-1 flex-col justify-between">
+                <!-- ... 기존 내용 ... -->
+                
+                <!-- 광고 삽입 공간: 레이싱 중 하단 -->
+                <div class="mt-4 p-2 bg-slate-950/50 rounded-xl border border-slate-800 text-center">
+                    <div class="h-32 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-lg">
+                        <span class="text-slate-700 text-xs">광고 영역</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+<!-- ... 이후 코드 생략 ... -->
 </body>
 </html>
