@@ -129,47 +129,50 @@
     <!-- Main Content Area -->
     <div class="relative flex-1 w-full h-full overflow-hidden flex">
 
-        <!-- 3D Viewport Container -->
-        <div class="relative flex-1 h-full bg-slate-950">
-            <canvas id="gameCanvas"></canvas>
+        <!-- 3D Viewport Container (16:9 Aspect Ratio) -->
+        <div class="relative flex-1 h-full bg-slate-950 flex items-center justify-center p-3 overflow-hidden">
+            <!-- 16:9 Aspect Ratio Frame Container -->
+            <div id="gameCanvasContainer" class="relative w-full max-w-full max-h-full aspect-video rounded-2xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-900 flex items-center justify-center">
+                <canvas id="gameCanvas" class="w-full h-full block"></canvas>
 
-            <!-- Live HUD overlay during race -->
-            <div id="raceHud" class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none transition-opacity duration-300 opacity-0 z-10">
-                <!-- Live Leaderboard with Smooth CSS Animation -->
-                <div class="glass-panel p-3 rounded-2xl w-64 text-xs pointer-events-auto shadow-2xl border border-slate-700/50">
-                    <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-700/60">
-                        <span class="font-bold text-amber-400 flex items-center gap-1.5">
-                            <i class="fa-solid fa-flag-checkered"></i> 실시간 순위
-                        </span>
-                        <span id="raceDistanceProgress" class="text-[11px] font-mono text-slate-400">0m / 1000m</span>
+                <!-- Live HUD overlay during race -->
+                <div id="raceHud" class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none transition-opacity duration-300 opacity-0 z-10">
+                    <!-- Live Leaderboard with Smooth CSS Animation -->
+                    <div class="glass-panel p-3 rounded-2xl w-64 text-xs pointer-events-auto shadow-2xl border border-slate-700/50">
+                        <div class="flex justify-between items-center mb-2 pb-1.5 border-b border-slate-700/60">
+                            <span class="font-bold text-amber-400 flex items-center gap-1.5">
+                                <i class="fa-solid fa-flag-checkered"></i> 실시간 순위
+                            </span>
+                            <span id="raceDistanceProgress" class="text-[11px] font-mono text-slate-400">0m / 1000m</span>
+                        </div>
+                        <div id="liveStandingsList" class="relative h-44 overflow-hidden">
+                            <!-- Dynamic standings item inserted smoothly -->
+                        </div>
                     </div>
-                    <div id="liveStandingsList" class="relative h-44 overflow-hidden">
-                        <!-- Dynamic standings item inserted smoothly -->
+
+                    <!-- Camera Switcher -->
+                    <div class="glass-panel p-1.5 rounded-2xl flex gap-1 pointer-events-auto">
+                        <button onclick="setCameraMode('sky')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all active bg-amber-500/20 text-amber-300 border border-amber-500/30" data-cam="sky">
+                            <i class="fa-solid fa-plane mr-1"></i> 공중뷰
+                        </button>
+                        <button onclick="setCameraMode('leader')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="leader">
+                            <i class="fa-solid fa-bolt mr-1"></i> 선두 추적
+                        </button>
+                        <button onclick="setCameraMode('myhorse')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="myhorse">
+                            <i class="fa-solid fa-star mr-1"></i> 내 배팅마
+                        </button>
+                        <button onclick="setCameraMode('finish')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="finish">
+                            <i class="fa-solid fa-bullseye mr-1"></i> 결승선
+                        </button>
                     </div>
                 </div>
 
-                <!-- Camera Switcher -->
-                <div class="glass-panel p-1.5 rounded-2xl flex gap-1 pointer-events-auto">
-                    <button onclick="setCameraMode('sky')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all active bg-amber-500/20 text-amber-300 border border-amber-500/30" data-cam="sky">
-                        <i class="fa-solid fa-plane mr-1"></i> 공중뷰
-                    </button>
-                    <button onclick="setCameraMode('leader')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="leader">
-                        <i class="fa-solid fa-bolt mr-1"></i> 선두 추적
-                    </button>
-                    <button onclick="setCameraMode('myhorse')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="myhorse">
-                        <i class="fa-solid fa-star mr-1"></i> 내 배팅마
-                    </button>
-                    <button onclick="setCameraMode('finish')" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-all" data-cam="finish">
-                        <i class="fa-solid fa-bullseye mr-1"></i> 결승선
-                    </button>
+                <!-- Race Live Commentary Ticker -->
+                <div id="commentaryBanner" class="absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel px-6 py-2.5 rounded-full border border-amber-500/30 text-center pointer-events-none transition-all duration-300 opacity-0 z-10 max-w-xl w-11/12">
+                    <p id="commentaryText" class="text-sm font-semibold text-amber-200 animate-pulse">
+                        <i class="fa-solid fa-bullhorn text-amber-400 mr-2"></i> 레이스 준비 중...
+                    </p>
                 </div>
-            </div>
-
-            <!-- Race Live Commentary Ticker -->
-            <div id="commentaryBanner" class="absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel px-6 py-2.5 rounded-full border border-amber-500/30 text-center pointer-events-none transition-all duration-300 opacity-0 z-10 max-w-xl w-11/12">
-                <p id="commentaryText" class="text-sm font-semibold text-amber-200 animate-pulse">
-                    <i class="fa-solid fa-bullhorn text-amber-400 mr-2"></i> 레이스 준비 중...
-                </p>
             </div>
         </div>
 
@@ -244,18 +247,18 @@
                     </button>
                 </div>
 
-                <!-- 컴팩트 광고 영역 (반 사이즈 축소) -->
-                <div class="mt-1.5 p-1 bg-slate-950/40 rounded-lg border border-slate-800 text-center">
-                    <div class="flex items-center justify-between text-[9px] text-slate-500 mb-0.5 px-1">
-                        <span>Advertisement</span>
-                        <div class="flex gap-1.5 text-[9px] text-slate-500">
-                            <a href="https://adsense-ko.googleblog.com/2012/04/blog-post_25.html" target="_blank" class="hover:text-amber-400 transition">도움말</a>
+                <!-- 광고 영역 카드 -->
+                <div class="mt-3 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 text-center shadow-lg shrink-0">
+                    <div class="flex items-center justify-between text-xs text-slate-400 mb-2 px-1">
+                        <span class="font-bold text-slate-300 flex items-center gap-1.5"><i class="fa-solid fa-rectangle-ad text-amber-400"></i> Advertisement</span>
+                        <div class="flex gap-2 text-xs text-slate-400">
+                            <a href="https://adsense-ko.googleblog.com/2012/04/blog-post_25.html" target="_blank" class="hover:text-amber-400 transition font-medium">도움말</a>
                             <span>•</span>
-                            <a href="https://adsense-ko.googleblog.com/2012/09/2.html" target="_blank" class="hover:text-amber-400 transition">수익 팁</a>
+                            <a href="https://adsense-ko.googleblog.com/2012/09/2.html" target="_blank" class="hover:text-amber-400 transition font-medium">수익 팁</a>
                         </div>
                     </div>
-                    <div class="h-6 flex items-center justify-center border border-dashed border-slate-800/80 rounded bg-slate-900/30">
-                        <span class="text-slate-600 text-[10px]">광고 영역</span>
+                    <div class="h-24 flex items-center justify-center border-2 border-dashed border-slate-700/60 rounded-xl bg-slate-950/60 transition hover:border-slate-600">
+                        <span class="text-slate-400 text-xs font-semibold"><i class="fa-solid fa-bullhorn mr-1.5 text-amber-400"></i> 애드센스 광고 영역</span>
                     </div>
                 </div>
             </div>
@@ -287,10 +290,10 @@
                     <!-- Updated via JS -->
                 </div>
 
-                <!-- 컴팩트 광고 영역 (반 사이즈 축소) -->
-                <div class="mt-1.5 p-1 bg-slate-950/40 rounded-lg border border-slate-800 text-center shrink-0">
-                    <div class="h-5 flex items-center justify-center border border-dashed border-slate-800/80 rounded bg-slate-900/30">
-                        <span class="text-slate-600 text-[10px]">광고 영역</span>
+                <!-- 광고 영역 카드 -->
+                <div class="mt-3 p-3 bg-slate-900/90 rounded-2xl border border-slate-800 text-center shadow-lg shrink-0">
+                    <div class="h-20 flex items-center justify-center border-2 border-dashed border-slate-700/60 rounded-xl bg-slate-950/60">
+                        <span class="text-slate-400 text-xs font-semibold"><i class="fa-solid fa-bullhorn mr-1.5 text-amber-400"></i> 애드센스 광고 영역</span>
                     </div>
                 </div>
             </div>
@@ -507,7 +510,8 @@
         }
 
         function init3D() {
-            const container = document.getElementById('gameCanvas');
+            const canvas = document.getElementById('gameCanvas');
+            const container = document.getElementById('gameCanvasContainer') || canvas.parentElement;
             
             // Scene
             scene = new THREE.Scene();
@@ -519,7 +523,7 @@
             camera.position.set(0, 45, 100);
 
             // Renderer
-            renderer = new THREE.WebGLRenderer({ canvas: container, antialias: true, alpha: false });
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
             renderer.setSize(container.clientWidth, container.clientHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
@@ -1366,7 +1370,7 @@ horse.distance += horse.currentSpeed * delta;
         }
 
         function onWindowResize() {
-            const container = document.getElementById('gameCanvas');
+            const container = document.getElementById('gameCanvasContainer') || document.getElementById('gameCanvas').parentElement;
             camera.aspect = container.clientWidth / container.clientHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(container.clientWidth, container.clientHeight);
